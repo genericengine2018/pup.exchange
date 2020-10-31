@@ -489,7 +489,7 @@ private:
     feehelpers feehelpers_table(get_self(),get_self().value);
     auto fitr = feehelpers_table.find(from.value);
     if( fitr==feehelpers_table.end() || fitr->ctime!=now || fitr->amount<conf.order_day_fee ){
-      check(false,"minimum "+amount_tostring(conf.order_day_fee,pup.symbol.get_symbol())+" is required.");
+      check(false,"minimum "+amount_tostring(conf.order_day_fee,pup.symbol.get_symbol())+" required.");
     }
 
     uint64_t etime = now + fitr->amount/conf.order_day_fee * 24*3600*1000;
