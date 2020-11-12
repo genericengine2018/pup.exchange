@@ -1,0 +1,102 @@
+{
+    "____comment": "This file was generated with eosio-abigen. DO NOT EDIT ",
+    "version": "eosio::abi/1.1",
+    "types": [],
+    "structs": [
+        {
+            "name": "feepool",
+            "base": "",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "uint64"
+                },
+                {
+                    "name": "tid",
+                    "type": "uint64"
+                },
+                {
+                    "name": "round",
+                    "type": "uint64"
+                },
+                {
+                    "name": "last_vol",
+                    "type": "uint64"
+                },
+                {
+                    "name": "vol",
+                    "type": "uint64"
+                },
+                {
+                    "name": "mined",
+                    "type": "uint64"
+                },
+                {
+                    "name": "utime",
+                    "type": "uint64"
+                }
+            ]
+        },
+        {
+            "name": "mineral",
+            "base": "",
+            "fields": [
+                {
+                    "name": "vol",
+                    "type": "uint64"
+                },
+                {
+                    "name": "vol_cap",
+                    "type": "uint64"
+                },
+                {
+                    "name": "start",
+                    "type": "uint64"
+                },
+                {
+                    "name": "limit",
+                    "type": "uint64"
+                },
+                {
+                    "name": "tvl",
+                    "type": "uint64"
+                }
+            ]
+        },
+        {
+            "name": "miningon",
+            "base": "",
+            "fields": [
+                {
+                    "name": "nonce",
+                    "type": "uint64"
+                }
+            ]
+        }
+    ],
+    "actions": [
+        {
+            "name": "miningon",
+            "type": "miningon",
+            "ricardian_contract": ""
+        }
+    ],
+    "tables": [
+        {
+            "name": "feepools",
+            "type": "feepool",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": []
+        },
+        {
+            "name": "mineral",
+            "type": "mineral",
+            "index_type": "i64",
+            "key_names": [],
+            "key_types": []
+        }
+    ],
+    "ricardian_clauses": [],
+    "variants": []
+}
