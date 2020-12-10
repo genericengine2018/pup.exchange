@@ -153,7 +153,7 @@ public:
     profits profits_table(get_self(),get_self().value);
     auto pitr = profits_table.begin();
     uint64_t day_bound = now/DAY_MS - 3;
-    if(pitr!=profits_table.end()){
+    if(pitr!=profits_table.end()) {
       uint64_t lastid = profits_table.rbegin()->id;
       for(; i < CLEANUP_LIMIT &&
             pitr->id < lastid &&
@@ -175,8 +175,7 @@ public:
   }
 
   [[eosio::on_notify("*::transfer")]]
-  void ontransfer(name from, name to, asset quantity, string memo)
-  {      
+  void ontransfer(name from, name to, asset quantity, string memo){      
     if(to!=get_self()) return;
     check(from!=to,"can't transfer to self.");
     check(quantity.amount>0,"must transfer positive quantity.");
@@ -184,7 +183,7 @@ public:
     std::map<string,string> params = parse(memo);
     auto itr = params.find("action");
     string action = "";
-    if(itr!=params.end())action = itr->second;
+    if(itr!=params.end()) action = itr->second;
 
     name contract = get_first_receiver();
     if(action=="fee") SaveFee(from,contract,quantity,params);
@@ -217,27 +216,28 @@ public:
     mineral m = mt.get_or_default();      
 
     uint64_t start =  now/conf.round_period * conf.round_period;
-    if(start>m.start) { 
+    if(start>m.start) { // do mining at the begining of each round and leave fee jobs to next calls.
       Mine(m); 
       mt.set(m,get_self());
       return; 
     }
 
-    // move past round fees to profits, copy last fee vol and erase processed feepool records.
     feepools feepools_table(get_self(),get_self().value);
     auto by_rtid = feepools_table.get_index<"byrtid"_n>();
     auto fitr = by_rtid.begin();    
     uint64_t round = m.start/conf.round_period; //current round
-    uint64_t to_mining_pool = 0;
+    if(fitr == by_rtid.end() || fitr->round >= round) return; //nothing to process.
 
+    // fee jobs - move fees of closed rounds to profits, copy last vols and erase processed records.
+    uint64_t to_mining_pool = 0;
     for(int i=0; 
         i < conf.action_limit &&
         fitr != by_rtid.end() &&
-        fitr->round < round; i++){
+        fitr->round < round; i++) {
       if(fitr->vol > 0) { 
         uint64_t fee_2_profit = fitr->vol * conf.fee_2_profit_p;
         uint64_t profit = fee_2_profit + fitr->mined;
-        IncProfit(fitr->tid,profit);
+        IncProfit(fitr->tid, profit);
 
         to_mining_pool += fitr->vol - fee_2_profit;
 
@@ -260,9 +260,11 @@ public:
       fitr = by_rtid.begin();
     }
 
-    m.vol += to_mining_pool;
-    m.vol_cap += to_mining_pool;
-    mt.set(m,get_self());
+    if(to_mining_pool>0) {
+      m.vol += to_mining_pool;
+      m.vol_cap += to_mining_pool;
+      mt.set(m,get_self());
+    }
   }
 
   [[eosio::action]]
@@ -271,7 +273,7 @@ public:
     settlement s = st.get_or_default();
     if(!s.on) { 
       uint64_t day =  now / DAY_MS;
-      if(day > s.day) { //do settlement at the beginning of a new day.
+      if(day > s.day) { //do settlement at the beginning of each new day.
         s.on = true;
         s.day = day;
         s.stage = 0;
@@ -290,8 +292,9 @@ public:
     int count = 0;
     for(int t=0; t < conf.action_limit &&
           pfitr != by_dtid.end() &&
-          pfitr->day == lastday; t++){
+          pfitr->day == lastday; t++) {
       bool more = false;
+
       if(pfitr->vol==0) {
         count++;
         more = count<conf.count_limit;
@@ -308,19 +311,19 @@ public:
           profits_table.modify(profits_table.find(pfitr->id),get_self(),[&](auto& p){p=pf;});
         }
 
-        //extra processing when current token is done (more=true)
-        if(more) { 
+        //extra processing when current token is done
+        if(s.uid==0 || more) { 
           //clear p24 for this token.
           pool24s pool24s_table(get_self(),get_self().value);
           auto p24itr = pool24s_table.find(s.tid);
           if(p24itr!=pool24s_table.end()) pool24s_table.erase(p24itr);
 
-          //move unused profit to next cycle (with 10 as tolerance)
+          //move unused profit to next day (with 10 as tolerance)
           if( pf.vol >= (pf.used_vol+10) ) {
             profit pf_nextday{};
             auto pfitr_nextday = by_dtid.find( (uint128_t)(lastday+1)<<64|pfitr->tid );
             if(pfitr_nextday!=by_dtid.end()) pf_nextday = *pfitr_nextday;
-            else{ 
+            else { 
               pf_nextday.id = AvailPrimKey(profits_table);
               pf_nextday.tid = pfitr->tid;
               pf_nextday.day = lastday+1;
@@ -334,7 +337,7 @@ public:
         }
       }
       
-      if(more || s.uid==0) {
+      if(s.uid==0 || more) {
         pfitr++;
         s.tid = pfitr->tid;
         s.uid = 0;
@@ -427,8 +430,8 @@ private:
 
     auto by_rvol = feepools_table.get_index<"byrvol"_n>();
     auto fitr = by_rvol.lower_bound( (uint128_t)round<<64 );
-    if(fitr->round==round && fitr!=by_rvol.begin()) fitr--;
-    if(fitr->round!=lastround) return; //no last round record found.
+    if(fitr!=by_rvol.begin()) fitr--;
+    if(fitr->round!=lastround) return; //no last-round record found.
 
     std::vector<feepool> topfps;
     std::vector<uint64_t> mined_expects;
@@ -439,7 +442,7 @@ private:
     for(int i=0; i<conf.top_num && 
         fitr != by_rvol.end() && 
         fitr->round == lastround && 
-        fitr->vol >= conf.top_vol_min; i++){
+        fitr->vol >= conf.top_vol_min; i++) {
       topfps.emplace_back(*fitr);
 
       const token tk = tokens_table.get(fitr->tid);
@@ -512,14 +515,14 @@ private:
 
   //return a boolean to indicate whether more processing is allowed.
   bool SettleStage1(settlement& s, int& count){
-    bankers bankers_table(CORE_ACCOUNT,CORE_ACCOUNT.value);
+    bankers bankers_table(conf.core_account,conf.core_account.value);
     auto by_tuid = bankers_table.get_index<"bytuid"_n>();
     auto bitr = by_tuid.lower_bound( (uint128_t)s.tid<<64 | s.uid );
     if(bitr==by_tuid.end() || bitr->tid!=s.tid) return true;
 
     tokens tokens_table(conf.core_account,conf.core_account.value);
     token tk = tokens_table.get(s.tid);
-    if(tk.pool==0||tk.pup_pool==0)return true;
+    if(tk.pool==0 || tk.pup_pool==0) return true;
 
     uint64_t lastday = s.day-1;
     pool24s pool24s_table(get_self(),get_self().value);
@@ -544,7 +547,8 @@ private:
     uint64_t time_bound = (lastday+0.5)*DAY_MS;
     for(; count < conf.count_limit &&
           bitr != by_tuid.end() &&
-          bitr->tid == tk.id; count++, bitr++){
+          bitr->tid == tk.id; 
+        count++, s.uid=bitr->uid+1, bitr++) {
       if(bitr->utime <= time_bound) continue;
 
       banker bk = *bitr;
@@ -553,25 +557,26 @@ private:
       p24.pup_vol += bk.pup_vol;
     }
 
-    if(bitr==by_tuid.end() || bitr->tid!=tk.id) s.uid=0;
-    else s.uid = bitr->uid + 1;
+    if(p24.vol>0 && p24.pup_vol>0) {
+      if(p24itr==pool24s_table.end()) pool24s_table.emplace(get_self(),[&](auto& p){p=p24;});
+      else pool24s_table.modify(p24itr,get_self(),[&](auto& p){p=p24;}); 
+    }
 
-    if(p24itr==pool24s_table.end()) pool24s_table.emplace(get_self(),[&](auto& p){p=p24;});
-    else pool24s_table.modify(p24itr,get_self(),[&](auto& p){p=p24;}); 
+    if(bitr==by_tuid.end() || bitr->tid!=tk.id) s.uid=0;
 
     return count<conf.count_limit;
   }
 
   //return a boolean to indicate whether more processing is allowed.
   bool SettleStage2(settlement& s, profit& pf, int& count){
-    bankers bankers_table(CORE_ACCOUNT,CORE_ACCOUNT.value);
+    bankers bankers_table(conf.core_account,conf.core_account.value);
     auto by_tuid = bankers_table.get_index<"bytuid"_n>();
     auto bitr = by_tuid.lower_bound( (uint128_t)s.tid<<64 | s.uid );
     if(bitr==by_tuid.end() || bitr->tid!=s.tid) return true;
 
     tokens tokens_table(conf.core_account,conf.core_account.value);
     token tk = tokens_table.get(s.tid);
-    if(tk.pool==0||tk.pup_pool==0)return true;
+    if(tk.pool==0 || tk.pup_pool==0) return true;
 
     uint64_t lastday = s.day-1;
     pool24s pool24s_table(get_self(),get_self().value);
@@ -593,8 +598,10 @@ private:
     }
 
     // cal effective token pool of last day (remove the p24 part)
-    tk.pool = tk.pool>p24.vol ? tk.pool-p24.vol : 0;
-    tk.pup_pool = tk.pup_pool>p24.pup_vol ? tk.pup_pool-p24.pup_vol : 0;
+    if(p24.vol>0 && p24.pup_vol>0) {
+      tk.pool = tk.pool>p24.vol ? tk.pool-p24.vol : 0;
+      tk.pup_pool = tk.pup_pool>p24.pup_vol ? tk.pup_pool-p24.pup_vol : 0;
+    }
     if(tk.pool==0 || tk.pup_pool==0) return true;
 
     incomes incomes_table(get_self(),get_self().value);  
@@ -602,7 +609,8 @@ private:
 
     for(; count < conf.action_limit &&
           bitr != by_tuid.end() &&
-          bitr->tid == tk.id; count++, bitr++) {
+          bitr->tid == tk.id; 
+        count++, s.uid=bitr->uid+1, bitr++) {
       if(bitr->utime > time_bound) continue; //skip unqualified bankers.
 
       banker bk = *bitr;
@@ -610,7 +618,7 @@ private:
       uint64_t share = pf.vol * (bk.pup_vol/(double)tk.pup_pool);
       if(share+pf.used_vol > pf.vol) share = pf.vol-pf.used_vol;
 
-      if(share>0){      
+      if(share>0) {      
         pf.used_vol += share;
         pf.utime = now;
 
@@ -625,8 +633,7 @@ private:
       }
     }
 
-    if(bitr==by_tuid.end() || bitr->tid!=tk.id)s.uid=0;
-    else s.uid = bitr->uid + 1;
+    if(bitr==by_tuid.end() || bitr->tid!=tk.id) s.uid=0;
 
     return count<conf.action_limit;
   }
