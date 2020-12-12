@@ -5,7 +5,6 @@
 #include <eosio/system.hpp>
 #include "../common/utils.hpp"
 #include "../common/eos_utils.hpp"
-#include "../common/config.hpp"
 #include "../common/mconfig.hpp"
 
 namespace puppy {
@@ -141,9 +140,9 @@ private:
 public:
   mining(name receiver, name code,  datastream<const char*> ds) : 
     contract::contract(receiver, code, ds),
-    now(current_time()),
-    pup{PUP_TOKEN_ID,extended_symbol(symbol(PUP_NAME,PUP_PREC),PUP_CONTRACT),1,1},
-    conf{MConfHelper::Get()} {
+    now( current_time() ),
+    pup{ PUP_TOKEN_ID, extended_symbol(symbol(PUP_NAME,PUP_PREC),PUP_CONTRACT), 1, 1 },
+    conf{ MConfHelper::Get(get_self()) } {
   }
 
   [[eosio::action]]
@@ -318,8 +317,12 @@ public:
           auto p24itr = pool24s_table.find(s.tid);
           if(p24itr!=pool24s_table.end()) pool24s_table.erase(p24itr);
 
-          //move unused profit to next day (with 10 as tolerance)
-          if( pf.vol >= (pf.used_vol+10) ) {
+          //move unused part to mining reserve or next day profit.
+          bool moved = true;
+          if( pf.used_vol == 0) { //meaning no valid bankers yet.
+            IncMineral(pf.vol);
+          }
+          else if( pf.vol >= (pf.used_vol+10) ) { //with 10 as tolerance
             profit pf_nextday{};
             auto pfitr_nextday = by_dtid.find( (uint128_t)(lastday+1)<<64|pfitr->tid );
             if(pfitr_nextday!=by_dtid.end()) pf_nextday = *pfitr_nextday;
@@ -328,11 +331,19 @@ public:
               pf_nextday.tid = pfitr->tid;
               pf_nextday.day = lastday+1;
             }
+
             pf_nextday.vol += pf.vol-pf.used_vol;
             pf_nextday.utime = now;
 
             if(pfitr_nextday==by_dtid.end()) profits_table.emplace(get_self(),[&](auto& p){p=pf_nextday;});
             else profits_table.modify(profits_table.find(pfitr_nextday->id),get_self(),[&](auto& p){p=pf_nextday;});
+          }
+          else moved = false;
+
+          if(moved) {
+            pf.used_vol = pf.vol;
+            pf.utime = now;
+            profits_table.modify(profits_table.find(pfitr->id),get_self(),[&](auto& p){p=pf;});
           }
         }
       }
@@ -405,10 +416,16 @@ private:
     const extended_symbol src_sym = extended_symbol(quantity.symbol,contract);  
     check(src_sym == pup.symbol, "mineral must be in pup.");
 
+    IncMineral(quantity.amount);
+  }
+
+  void IncMineral(uint64_t amount){
+    if(amount==0) return;
+
     Mineral mt(get_self(),get_self().value);
     mineral m = mt.get_or_default();
-    m.vol_cap += quantity.amount;
-    m.vol += quantity.amount;
+    m.vol_cap += amount;
+    m.vol += amount;
     mt.set(m,get_self());
   }
 
