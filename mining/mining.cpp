@@ -154,18 +154,18 @@ public:
     uint64_t day_bound = now/DAY_MS - 3;
     if(pitr!=profits_table.end()) {
       uint64_t lastid = profits_table.rbegin()->id;
-      for(; i < CLEANUP_LIMIT &&
+      for(; i < conf.cleanup_limit &&
             pitr->id < lastid &&
             pitr->day <= day_bound; i++){
         pitr = profits_table.erase(pitr);
       }
-      if(i==CLEANUP_LIMIT)return;      
+      if(i==conf.cleanup_limit)return;      
     }   
 
     pool24s pool24s_table(get_self(),get_self().value);
     auto by_day = pool24s_table.get_index<"byday"_n>();
     auto p24itr = by_day.begin();
-    for(; i < CLEANUP_LIMIT && 
+    for(; i < conf.cleanup_limit && 
           p24itr != by_day.end() && 
           p24itr->day <= day_bound; i++){
       pool24s_table.erase( pool24s_table.find(p24itr->tid) );
