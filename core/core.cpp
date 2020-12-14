@@ -114,25 +114,6 @@ public:
   }
 
   [[eosio::action]]
-  void fix(){
-    tokens tokens_table(get_self(),get_self().value);
-    tokens tokens_table_124("puppycore124"_n,name("puppycore124").value);
-
-    auto titr = tokens_table.begin();
-    while(titr!=tokens_table.end()) titr = tokens_table.erase(titr);
-
-    auto titr_124 = tokens_table_124.begin();
-    for(;titr_124!=tokens_table_124.end();titr_124++){
-      tokens_table.emplace(get_self(),[&](auto& t){
-        t = *titr_124;
-        t.pool = t.id==PUP_TOKEN_ID ? 1:0;
-        t.pup_pool = t.id==PUP_TOKEN_ID ? 1:0;
-        t.utime = now;
-      });
-    }
-  }
-
-  [[eosio::action]]
   void cleanup(uint64_t nonce){
     int i=0;
 
