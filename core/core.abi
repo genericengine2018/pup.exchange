@@ -58,6 +58,11 @@
             ]
         },
         {
+            "name": "fix",
+            "base": "",
+            "fields": []
+        },
+        {
             "name": "instant",
             "base": "",
             "fields": [
@@ -210,6 +215,11 @@
         {
             "name": "cleanup",
             "type": "cleanup",
+            "ricardian_contract": ""
+        },
+        {
+            "name": "fix",
+            "type": "fix",
             "ricardian_contract": ""
         },
         {

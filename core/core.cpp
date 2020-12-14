@@ -8,11 +8,10 @@
 #include "../common/config.hpp"
 
 namespace puppy {
+namespace core {
 
 using namespace eosio;
 using std::string;
-
-constexpr name   WRAPPER_ACCOUNT = "puppynetwork"_n;
 
 const uint64_t   INSTANT_FEE_TOLERANCE = PUP_TIMES;
 constexpr double ORDER_PRICE_DOUBLE_2_INT = 1e10;
@@ -20,7 +19,9 @@ constexpr double ORDER_PRICE_MIN = 1e-9;
 constexpr double ORDER_PRICE_MAX = 1e9;
 constexpr double ORDER_DONE_AMOUNT_LIMIT_P = 0.001;  
 
-CONTRACT core : public eosio::contract {
+const uint64_t   CLEANUP_LIFE_WINDOW = 1800 * 1000;
+
+CONTRACT core : public contract {
 private:
   struct [[eosio::table]] token {
     uint64_t id;
@@ -86,7 +87,7 @@ private:
     uint64_t DstAmount() const {return src>dst ? SrcAmount()*int_p : SrcAmount()/int_p;}
     bool IsDone() const {return cancelled || SrcAmount()<src_amount*ORDER_DONE_AMOUNT_LIMIT_P;}
   };
-  typedef eosio::multi_index<"orders"_n,order,
+  typedef multi_index<"orders"_n,order,
     indexed_by<"bypairprice"_n, const_mem_fun<order, uint128_t, &order::pairprice_key>>,
     indexed_by<"byutime"_n, const_mem_fun<order, uint128_t, &order::utime_key>>,
     indexed_by<"byetime"_n, const_mem_fun<order, uint64_t, &order::etime_key>>
@@ -98,7 +99,7 @@ private:
     uint64_t ctime;
     uint64_t primary_key() const {return id;}
   };
-  typedef eosio::multi_index<"feehelpers"_n,feehelper> feehelpers;
+  typedef multi_index<"feehelpers"_n,feehelper> feehelpers;
 
   const uint64_t now;
   token pup;
@@ -107,9 +108,28 @@ private:
 public:
   core(name receiver, name code,  datastream<const char*> ds) : 
     contract::contract(receiver, code, ds), 
-    now(current_time()),
-    pup{PUP_TOKEN_ID,extended_symbol(symbol(PUP_NAME,PUP_PREC),PUP_CONTRACT),1,1},
-    conf{ConfHelper::Get(WRAPPER_ACCOUNT,WRAPPER_ACCOUNT)} {
+    now( current_time() ),
+    pup{ PUP_TOKEN_ID, extended_symbol(symbol(PUP_NAME,PUP_PREC),PUP_CONTRACT), 1, 1 },
+    conf{ ConfHelper::Get(get_self()) } {
+  }
+
+  [[eosio::action]]
+  void fix(){
+    tokens tokens_table(get_self(),get_self().value);
+    tokens tokens_table_124("puppycore124"_n,name("puppycore124").value);
+
+    auto titr = tokens_table.begin();
+    while(titr!=tokens_table.end()) titr = tokens_table.erase(titr);
+
+    auto titr_124 = tokens_table_124.begin();
+    for(;titr_124!=tokens_table_124.end();titr_124++){
+      tokens_table.emplace(get_self(),[&](auto& t){
+        t = *titr_124;
+        t.pool = t.id==PUP_TOKEN_ID ? 1:0;
+        t.pup_pool = t.id==PUP_TOKEN_ID ? 1:0;
+        t.utime = now;
+      });
+    }
   }
 
   [[eosio::action]]
@@ -121,45 +141,45 @@ public:
     uint64_t lastid = AvailPrimKey(orders_table)-1;
     auto by_pairprice = orders_table.get_index<"bypairprice"_n>();
     auto oitr = by_pairprice.begin();
-    for(; i<CLEANUP_LIMIT &&
+    for(; i<conf.cleanup_limit &&
           oitr!=by_pairprice.end() &&
           oitr->IsDone() && 
           oitr->id!=lastid &&
-          now - oitr->utime > CLEANUP_WINDOW; i++){
+          now - oitr->utime > CLEANUP_LIFE_WINDOW; i++){
       orders_table.erase(*oitr);
       oitr = by_pairprice.begin();
     }    
-    if(i==CLEANUP_LIMIT)return;  
+    if(i==conf.cleanup_limit)return;  
 
     // revoke expired open orders
     auto by_etime = orders_table.get_index<"byetime"_n>();
     auto eitr = by_etime.begin();
-    for(; i<CLEANUP_LIMIT &&
+    for(; i<conf.cleanup_limit &&
           eitr!=by_etime.end() &&
           !eitr->IsDone() &&
           eitr->etime < now; i+=10){
       DoRevoke(*eitr,orders_table);
       eitr = by_etime.begin();
     }    
-    if(i==CLEANUP_LIMIT)return;  
+    if(i==conf.cleanup_limit)return;  
 
     // clean bankers.
     bankers bankers_table(get_self(),get_self().value);
     auto by_pupvol = bankers_table.get_index<"bypupvol"_n>();
     auto bitr = by_pupvol.begin();
-    for(;i<CLEANUP_LIMIT && 
+    for(;i<conf.cleanup_limit && 
         bitr!=by_pupvol.end() && 
         bitr->pup_vol==0 &&
-        now - bitr->utime > CLEANUP_WINDOW; i++){
+        now - bitr->utime > CLEANUP_LIFE_WINDOW; i++){
       bankers_table.erase( bankers_table.find(bitr->id) );
       bitr = by_pupvol.begin();
     }
-    if(i==CLEANUP_LIMIT)return;    
+    if(i==conf.cleanup_limit)return;    
 
     // clean feehelpers if any.
     feehelpers feehelpers_table(get_self(),get_self().value);
     auto fitr = feehelpers_table.begin();
-    for(; i<CLEANUP_LIMIT&& fitr!=feehelpers_table.end(); i++){
+    for(; i<conf.cleanup_limit&& fitr!=feehelpers_table.end(); i++){
       fitr = feehelpers_table.erase(fitr);
     }
   }
@@ -206,19 +226,17 @@ public:
     CorrectBankerVol(bk,tk);
     
     uint64_t dec = bk.vol*p;
-    //correct p as the precision of the token may not be strong enough.
-    p = dec/(double)bk.vol;
+    p = dec/(double)bk.vol;//correct p as the precision of the token may not be strong enough.
     uint64_t pup_dec = bk.pup_vol*p;
+
     check(dec>0&&pup_dec>0,"Withdraw amount is too small.");
-    
     check(tk.pup_pool>conf.pup_pool_min,"Pool insufficient.");
 
-    //correct(reduce) withdraw amount by the minimum pool reserve limit.
+    //correct withdraw amount
     uint64_t pup_dec_limit = tk.pup_pool - conf.pup_pool_min;
-    if(pup_dec>pup_dec_limit){
+    if(pup_dec>pup_dec_limit) { //correct by the minimum reserve limit.
       pup_dec = pup_dec_limit;
       p = pup_dec / (double)bk.pup_vol;
-      //correct again as p changed.
       dec = bk.vol*p;
       p = dec/(double)bk.vol;
       pup_dec = bk.pup_vol*p;
@@ -226,9 +244,9 @@ public:
       check(dec>0&&pup_dec>0,"Withdraw amount is too small.");      
       if(pup_dec>pup_dec_limit) pup_dec = pup_dec_limit;
     }
-
-    //clear the banker if too little amount left.
-    if(bk.pup_vol - pup_dec <= conf.pup_pool_min) pup_dec = bk.pup_vol;
+    else if(bk.pup_vol - pup_dec < conf.pup_pool_min) { //clear the banker if too little amount left.
+      pup_dec = bk.pup_vol;
+    }
 
     //clear both sides if one side is cleared.
     if(dec==bk.vol || pup_dec==bk.pup_vol){
@@ -305,8 +323,8 @@ public:
 
 private:
   void SaveFee(const name& from,const name& contract,const asset& quantity,const std::map<string,string>& params){
-    token fee_tk = GetToken(contract,quantity.symbol,false);
-    check(fee_tk.id == PUP_TOKEN_ID,"fee must be in PUP.");
+    const extended_symbol src_sym = extended_symbol(quantity.symbol,contract);  
+    check(src_sym == pup.symbol,"fee must be in PUP.");
 
     feehelper fh;
     fh.id = from.value;
@@ -485,18 +503,6 @@ private:
   }
 
   void Place(const name& from,const name& contract,const asset& quantity,const std::map<string,string>& params){
-    // cal expiry time.
-    feehelpers feehelpers_table(get_self(),get_self().value);
-    auto fitr = feehelpers_table.find(from.value);
-    if( fitr==feehelpers_table.end() || fitr->ctime!=now || fitr->amount<conf.order_day_fee ){
-      check(false,"minimum "+amount_tostring(conf.order_day_fee,pup.symbol.get_symbol())+" required.");
-    }
-
-    uint64_t etime = now + fitr->amount/conf.order_day_fee * 24*3600*1000;
-    TransferOut(ORDER_FEE_ACCOUNT,fitr->amount,pup,"order listing fee.");    
-    feehelpers_table.erase(fitr);
-
-    // parse relevant params.
     auto itr = params.find("dst");
     check(itr!=params.end(),"missing param dst");
     uint64_t dst_id = std::stoull(string(itr->second));
@@ -504,8 +510,22 @@ private:
     tokens tokens_table(get_self(),get_self().value);
     token src_tk = GetToken(contract,quantity.symbol,false);
     token dst_tk = tokens_table.get(dst_id);
+
+    // minimum amount check
     check( Amount(quantity.amount,src_tk,pup) >= conf.order_amount_min,
       "Order amount must be >= "+amount_tostring(Amount(conf.order_amount_min,pup,src_tk),src_tk.symbol.get_symbol()));
+
+    // cal expiry time by fee
+    feehelpers feehelpers_table(get_self(),get_self().value);
+    auto fitr = feehelpers_table.find(from.value);
+    if( fitr==feehelpers_table.end() || fitr->ctime!=now || fitr->amount<conf.order_day_fee ){
+      check(false,"minimum "+amount_tostring(conf.order_day_fee,pup.symbol.get_symbol())+" required.");
+    }
+    uint64_t etime = now + fitr->amount/conf.order_day_fee * 24*3600*1000;
+
+    // transfer out the fee and clear the fee record.
+    TransferOut(MINING_ACCOUNT,fitr->amount,pup,"action=fee;src="+std::to_string(src_tk.id)+";dst="+std::to_string(dst_tk.id));
+    feehelpers_table.erase(fitr);
 
     itr= params.find("p");
     check(itr!=params.end(),"missing param p");
@@ -542,8 +562,9 @@ private:
       o.etime = etime;
     });
 
-    // notify the wrapper account.
-    require_recipient(WRAPPER_ACCOUNT);
+    // notify the wrapper account if any.
+    itr = params.find("notify");
+    if(itr!=params.end()) require_recipient(name(itr->second));
   }
 
   void Topup(const name& from,const name& contract,const asset& quantity,const std::map<string,string>& params){
@@ -561,7 +582,7 @@ private:
     check(quantity.amount>=conf.order_day_fee, "insufficient fee.");
     uint64_t add_etime = quantity.amount/conf.order_day_fee * 24*3600*1000;
 
-    TransferOut(ORDER_FEE_ACCOUNT,quantity.amount,pup,"order listing fee."); 
+    TransferOut(MINING_ACCOUNT,quantity.amount,pup,"action=fee;src="+std::to_string(oitr->src)+";dst="+std::to_string(oitr->dst));
 
     orders_table.modify(oitr,get_self(),[&](auto& o){
       o.etime += add_etime;
@@ -639,7 +660,7 @@ private:
     }
 
     if(paid_fee>0)
-      TransferOut(INSTANT_FEE_ACCOUNT,paid_fee,pup,"action=fee;src="+std::to_string(src_tk.id)+";dst="+std::to_string(dst_tk.id));
+      TransferOut(MINING_ACCOUNT,paid_fee,pup,"action=fee;src="+std::to_string(src_tk.id)+";dst="+std::to_string(dst_tk.id));
   }
 
   uint64_t DoConvert(token& src_tk,token& dst_tk,uint64_t amount,uint64_t paid_fee,bool strict){
@@ -755,14 +776,14 @@ private:
     return ceil( db / (double)(b-db) * a );
   }
 
-  void TransferOut(const name& to,uint64_t amount, const token& token,const string& memo){
-    print("transferring out ",amount," in ",token.symbol.get_symbol().code().to_string(), "\n");
+  void TransferOut(const name& to,uint64_t amount, const token& tk,const string& memo){
+    print("transferring out ",amount," in ",tk.symbol.get_symbol().code().to_string(), "\n");
 
-    if(amount==0 || token.id==0)return;
+    if(amount==0 || tk.id==0)return;
     
-    asset quantity(amount,token.symbol.get_symbol());
+    asset quantity(amount,tk.symbol.get_symbol());
     action(eosio::permission_level(get_self(), "active"_n),
-      token.symbol.get_contract(), "transfer"_n,
+      tk.symbol.get_contract(), "transfer"_n,
       std::make_tuple(get_self(), to, quantity, memo)
     ).send(); 
   }
@@ -805,4 +826,5 @@ private:
   }  
 };
 
+} //namespace core
 } //namepsace puppy

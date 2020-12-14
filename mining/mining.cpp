@@ -8,19 +8,20 @@
 #include "../common/mconfig.hpp"
 
 namespace puppy {
+namespace mining {
 
 using namespace eosio;
 using std::string;
 
 const uint64_t   DAY_MS = 24*3600*1000;
 
-CONTRACT mining : public eosio::contract {
+CONTRACT mining : public contract {
 private:
   struct account {
     asset    balance;
     uint64_t primary_key()const { return balance.symbol.code().raw(); }
   };
-  typedef eosio::multi_index<"accounts"_n,account> accounts;
+  typedef multi_index<"accounts"_n,account> accounts;
 
   struct token {
     uint64_t id;
@@ -52,7 +53,7 @@ private:
     uint64_t pupvol_key() const {return pup_vol;}
     uint128_t tvol_key() const {return uint128_t(tid)<<64|vol;}
   };
-  typedef eosio::multi_index<"bankers"_n,banker,
+  typedef multi_index<"bankers"_n,banker,
     indexed_by<"bytuid"_n,const_mem_fun<banker,uint128_t,&banker::tuid_key>>,
     indexed_by<"byutime"_n, const_mem_fun<banker, uint128_t, &banker::utime_key>>,
     indexed_by<"bypupvol"_n,const_mem_fun<banker, uint64_t, &banker::pupvol_key>>,
@@ -73,7 +74,7 @@ private:
     uint128_t utid_key() const {return (uint128_t(utime)<<64)|tid;}
     uint128_t rvol_key() const {return (uint128_t(round)<<64)|vol;}
   };
-  typedef eosio::multi_index<"feepools"_n,feepool,
+  typedef multi_index<"feepools"_n,feepool,
     indexed_by<"byrtid"_n,const_mem_fun<feepool,uint128_t,&feepool::rtid_key>>,
     indexed_by<"byrvol"_n, const_mem_fun<feepool, uint128_t, &feepool::rvol_key>>,    
     indexed_by<"byutid"_n, const_mem_fun<feepool, uint128_t, &feepool::utid_key>>
@@ -86,7 +87,7 @@ private:
     uint64_t limit;
     uint64_t tvl;
   };
-  typedef eosio::singleton<"mineral"_n,mineral> Mineral;
+  typedef singleton<"mineral"_n,mineral> Mineral;
 
   struct [[eosio::table]] profit {
     uint64_t id;
@@ -100,7 +101,7 @@ private:
     uint128_t dtid_key() const {return (uint128_t(day)<<64)|tid;} 
     uint128_t utid_key() const {return (uint128_t(utime)<<64)|tid;}
   };
-  typedef eosio::multi_index<"profits"_n,profit,
+  typedef multi_index<"profits"_n,profit,
     indexed_by<"bydtid"_n,const_mem_fun<profit,uint128_t,&profit::dtid_key>>,
     indexed_by<"byutid"_n, const_mem_fun<profit, uint128_t, &profit::utid_key>>
   > profits;
@@ -110,7 +111,7 @@ private:
     uint64_t vol;
     uint64_t primary_key() const { return user.value; }
   };
-  typedef eosio::multi_index<"incomes"_n,income> incomes;
+  typedef multi_index<"incomes"_n,income> incomes;
 
   struct [[eosio::table]] pool24 {
     uint64_t tid;    
@@ -120,7 +121,7 @@ private:
     uint64_t primary_key() const {return tid;}
     uint64_t day_key() const {return day;}
   };
-  typedef eosio::multi_index<"pool24s"_n,pool24,
+  typedef multi_index<"pool24s"_n,pool24,
     indexed_by<"byday"_n,const_mem_fun<pool24,uint64_t,&pool24::day_key>>
   > pool24s;
 
@@ -131,7 +132,7 @@ private:
     uint64_t tid;
     uint64_t uid;
   };
-  typedef eosio::singleton<"settlement"_n,settlement> Settlement;
+  typedef singleton<"settlement"_n,settlement> Settlement;
 
   const uint64_t now;
   token pup;
@@ -689,4 +690,5 @@ private:
 
 };
 
+} //namespace mining
 } //namepsace puppy

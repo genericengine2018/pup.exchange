@@ -5,12 +5,12 @@
 #include <string>
 
 namespace puppy {
+namespace mining {
 
 using namespace eosio;
-using std::string;
 
-constexpr name   CORE_ACCOUNT = "puppycore124"_n;
-constexpr name   MCONFIG_ACCOUNT = "puppynetwork"_n;
+constexpr name   CORE_ACCOUNT = "puppycore125"_n;
+constexpr name   CONFIG_ACCOUNT = "puppyconfig1"_n;
 
 const uint64_t   SYS_TOKEN_ID = 1;
 const uint64_t   PUP_TOKEN_ID = 2;
@@ -97,7 +97,7 @@ typedef singleton<"mconfig"_n,mconfig> MConfig;
 class MConfHelper{
 public:
     static mconfig Get(const name& scope){
-        MConfig conf_table(MCONFIG_ACCOUNT,scope.value);   
+        MConfig conf_table(CONFIG_ACCOUNT,scope.value);   
         mconfig conf = conf_table.get_or_default();
 
         conf.round_period = std::clamp(conf.round_period,ROUND_PERIOD_L,ROUND_PERIOD_U);
@@ -119,9 +119,10 @@ public:
     }
 
     static void Set(const mconfig& conf, const name& scope){
-        MConfig conf_table(MCONFIG_ACCOUNT,scope.value);  
-        conf_table.set(conf,MCONFIG_ACCOUNT);
+        MConfig conf_table(CONFIG_ACCOUNT,scope.value);  
+        conf_table.set(conf,CONFIG_ACCOUNT);
     }
 };
 
+}
 }
