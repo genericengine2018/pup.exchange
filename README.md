@@ -16,4 +16,4 @@ Now almost all PUP token supply is locked up in the mining module for fair distr
 
 #updated 2020/12/14
 
-The core code has upgraded. A new account puppycore125 has been deployed to run the code as the old ones can not be modified. The old accounts(123,124) still remain active and the services can be accessed with any eos prc tools.
+The core code has upgraded with some small changes and bug fixes. A new account puppycore125 has been deployed to run the code as the old ones can not be modified. The old accounts(123,124) still remain active and the services can be accessed with any eos rpc tools.
