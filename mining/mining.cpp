@@ -358,7 +358,7 @@ public:
       if(!more) break;
     }
 
-    if(pfitr==by_dtid.end() || pfitr->day!=lastday) { //move to next stage.
+    if(pfitr==by_dtid.end() || pfitr->day!=lastday) { //move on to next stage.
       s.stage++;
       s.tid = 0;
       s.uid = 0;

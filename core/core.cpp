@@ -14,6 +14,8 @@ using namespace eosio;
 using std::string;
 
 const uint64_t   INSTANT_FEE_TOLERANCE = PUP_TIMES;
+
+constexpr double ORDER_PRICE_TOLERANCE_P = 0.999;
 constexpr double ORDER_PRICE_DOUBLE_2_INT = 1e10;
 constexpr double ORDER_PRICE_MIN = 1e-9;
 constexpr double ORDER_PRICE_MAX = 1e9;
@@ -148,7 +150,7 @@ public:
     bankers bankers_table(get_self(),get_self().value);
     auto by_pupvol = bankers_table.get_index<"bypupvol"_n>();
     auto bitr = by_pupvol.begin();
-    for(;i<conf.cleanup_limit && 
+    for(; i<conf.cleanup_limit && 
         bitr!=by_pupvol.end() && 
         bitr->pup_vol==0 &&
         now - bitr->utime > CLEANUP_LIFE_WINDOW; i++){
@@ -558,9 +560,8 @@ private:
     check(oitr!=orders_table.end(), "invalid order id.");
     check(!oitr->IsDone(), "topup - order already closed.");
     check(oitr->etime>=now, "order already expired.");
-    check(oitr->user==from, "the order belongs to "+oitr->user.to_string());
-
     check(quantity.amount>=conf.order_day_fee, "insufficient fee.");
+    
     uint64_t add_etime = quantity.amount/conf.order_day_fee * 24*3600*1000;
 
     TransferOut(MINING_ACCOUNT,quantity.amount,pup,"action=fee;src="+std::to_string(oitr->src)+";dst="+std::to_string(oitr->dst));
@@ -686,7 +687,7 @@ private:
     //check execution price.
     bool tobuy = ord.src<ord.dst;
     double avg_p = tobuy ? src_filled/(double)dst_filled : dst_filled/(double)src_filled;
-    check((tobuy && ord.int_p>=(avg_p*0.999)) || (!tobuy && avg_p>=(ord.int_p*0.999)), 
+    check((tobuy && ord.int_p>=(avg_p*ORDER_PRICE_TOLERANCE_P)) || (!tobuy && avg_p>=(ord.int_p*ORDER_PRICE_TOLERANCE_P)), 
       "order price not met.");
 
     src_filled = std::min(src_filled,ord.SrcAmount());
